@@ -32,8 +32,8 @@ Due to manufacturing tolerances, each nRF52840 radio chip has microscopic imperf
 
 ```
 firmware/
-|--transmitter_NodeA.ino          <- Flash to whichever node is transmitting
-|--receiver_NodeB_and_C.ino       <- Flash to whichever nodes are receiving
+|--transmitter_NodeA_NodeB_NodeC.ino          <- Flash to whichever node is transmitting
+|--receiver_NodeA_B_and_C.ino       <- Flash to whichever nodes are receiving
 |-- data_collection/
     |--logger.py                      <- RPi dual-node logger (main experiment)
     |--range_test_logger.py           <- Range test (run once before each site)
