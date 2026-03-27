@@ -275,50 +275,56 @@ def build_dataset(scenario, frame_size, overlap, series_dict, ENVS, NODES,
 # ══════════════════════════════════════════════════════════════════
 
 def plot_training_curves(history_store, filename):
-    """Plot train/test loss and accuracy curves for all Strategy 1 experiments."""
-    keys = sorted(history_store.keys())
-    n = len(keys)
-    if n == 0:
-        return
+    """Plot train/test loss and accuracy: 2x2 grid (Model x Scenario).
+    Each subplot overlays frame=500 (solid) and frame=1000 (dashed)
+    at overlap=50%, keeping the figure clean and readable.
+    """
+    combos = [
+        ("CNN1D",    "I (Environment)"),
+        ("CNN1D",    "II (Node)"),
+        ("ResNet1D", "I (Environment)"),
+        ("ResNet1D", "II (Node)"),
+    ]
 
-    fig, axes = plt.subplots(n, 2, figsize=(14, 4 * n))
-    if n == 1:
-        axes = axes.reshape(1, -1)
-
+    fig, axes = plt.subplots(2, 4, figsize=(20, 8))
     fig.suptitle("Training Curves -- Strategy 1 (Seen Data)\n"
-                 "Left: Loss | Right: Accuracy",
-                 fontsize=14, fontweight="bold")
+                 "Solid = frame 500  |  Dashed = frame 1000  |  overlap = 50%",
+                 fontsize=13, fontweight="bold")
 
-    for i, key in enumerate(keys):
-        model_name, scenario_label, frame_size, overlap = key
-        hist = history_store[key]
-        epochs_range = range(1, len(hist["train_loss"]) + 1)
-        title = f"{model_name} | {scenario_label} | f={frame_size} o={int(overlap*100)}%"
+    for idx, (mname, scn) in enumerate(combos):
+        row = idx // 2
+        col_base = (idx % 2) * 2   # 0 or 2
 
-        # Loss plot
-        ax_loss = axes[i][0]
-        ax_loss.plot(epochs_range, hist["train_loss"], label="Train Loss", color="#2196F3")
-        if hist["test_loss"]:
-            ax_loss.plot(epochs_range, hist["test_loss"], label="Test Loss",
-                         color="#FF5722", linestyle="--")
-        ax_loss.set_xlabel("Epoch")
-        ax_loss.set_ylabel("Loss")
-        ax_loss.set_title(title)
-        ax_loss.legend(fontsize=8)
-        ax_loss.grid(True, alpha=0.3)
+        ax_loss = axes[row][col_base]
+        ax_acc  = axes[row][col_base + 1]
+        title = f"{mname} | {scn}"
 
-        # Accuracy plot
-        ax_acc = axes[i][1]
-        ax_acc.plot(epochs_range, [a * 100 for a in hist["train_acc"]],
-                    label="Train Acc", color="#2196F3")
-        if hist["test_acc"]:
-            ax_acc.plot(epochs_range, [a * 100 for a in hist["test_acc"]],
-                        label="Test Acc", color="#FF5722", linestyle="--")
-        ax_acc.set_xlabel("Epoch")
-        ax_acc.set_ylabel("Accuracy (%)")
-        ax_acc.set_title(title)
-        ax_acc.legend(fontsize=8)
-        ax_acc.grid(True, alpha=0.3)
+        for fs, ls in [(500, "-"), (1000, "--")]:
+            key = (mname, scn, fs, 0.5)
+            if key not in history_store:
+                continue
+            hist = history_store[key]
+            ep = range(1, len(hist["train_loss"]) + 1)
+
+            ax_loss.plot(ep, hist["train_loss"], ls, color="#2196F3",
+                         label=f"Train f={fs}", alpha=0.9)
+            if hist["test_loss"]:
+                ax_loss.plot(ep, hist["test_loss"], ls, color="#FF5722",
+                             label=f"Test f={fs}", alpha=0.9)
+
+            ax_acc.plot(ep, [a*100 for a in hist["train_acc"]], ls,
+                        color="#2196F3", label=f"Train f={fs}", alpha=0.9)
+            if hist["test_acc"]:
+                ax_acc.plot(ep, [a*100 for a in hist["test_acc"]], ls,
+                            color="#FF5722", label=f"Test f={fs}", alpha=0.9)
+
+        ax_loss.set_title(f"{title}\nLoss", fontsize=10)
+        ax_loss.set_xlabel("Epoch"); ax_loss.set_ylabel("Loss")
+        ax_loss.legend(fontsize=7); ax_loss.grid(True, alpha=0.3)
+
+        ax_acc.set_title(f"{title}\nAccuracy", fontsize=10)
+        ax_acc.set_xlabel("Epoch"); ax_acc.set_ylabel("Accuracy (%)")
+        ax_acc.legend(fontsize=7); ax_acc.grid(True, alpha=0.3)
         ax_acc.set_ylim(0, 105)
 
     plt.tight_layout()
@@ -352,34 +358,57 @@ def plot_confusion_matrices(cm_store, strategy, frame_size, overlap,
 
 
 def plot_bar_chart(results_df, filename):
-    """Plot bar chart comparing all experiments."""
+    """Plot bar chart: 2x2 grid (frame x scenario) with clean grouped bars."""
     df = results_df.copy()
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+    frames = sorted(df["Frame"].unique())
+    scenarios = df["Scenario"].unique()
 
-    for i, scn in enumerate(df["Scenario"].unique()):
-        sub = df[df["Scenario"] == scn].reset_index(drop=True)
-        ax = axes[i]
-        x = np.arange(len(sub))
-        colors = ["#2196F3" if "Seen" in s else "#FF9800" for s in sub["Strategy"]]
-        bars = ax.bar(x, sub["Accuracy"], color=colors, edgecolor="white", width=0.7)
-        for bar, val in zip(bars, sub["Accuracy"]):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
-                    f"{val:.0f}%", ha="center", va="bottom", fontsize=7)
-        ax.set_xticks(x)
-        ax.set_xticklabels(
-            [f"{m}\nf={f} o={o}\n{s}"
-             for m, f, o, s in zip(sub["Model"], sub["Frame"],
-                                    sub["Overlap"], sub["Strategy"])],
-            fontsize=6.5, ha="center")
-        ax.set_ylabel("Accuracy (%)")
-        ax.set_title(f"Scenario {scn}", fontsize=13, fontweight="bold")
-        ax.set_ylim(0, 110)
-        chance = 20 if "Environment" in scn else 33.3
-        ax.axhline(y=chance, color="gray", ls="--", lw=0.8,
-                   label=f"chance ({chance:.0f}%)")
-        ax.legend(fontsize=8)
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle("All Experiment Results", fontsize=15, fontweight="bold")
 
-    plt.suptitle("All Experiment Results", fontsize=15, fontweight="bold", y=1.02)
+    for fi, fs in enumerate(frames):
+        for si, scn in enumerate(scenarios):
+            ax = axes[fi][si]
+            sub = df[(df["Frame"] == fs) & (df["Scenario"] == scn)]
+
+            # Group: each model-overlap combo gets a pair of bars (S1, S2)
+            groups = sub.groupby(["Model", "Overlap"]).agg(list).reset_index()
+            n_groups = len(groups)
+            x = np.arange(n_groups)
+            width = 0.35
+
+            s1_vals, s2_vals, labels = [], [], []
+            for _, row in groups.iterrows():
+                for j, strat in enumerate(row["Strategy"]):
+                    if "Seen" in strat and "Un" not in strat:
+                        s1_vals.append(row["Accuracy"][j])
+                    else:
+                        s2_vals.append(row["Accuracy"][j])
+                labels.append(f"{row['Model']}\n{row['Overlap']}")
+
+            ax.bar(x - width/2, s1_vals, width, label="Strategy 1 (Seen)",
+                   color="#2196F3", edgecolor="white")
+            ax.bar(x + width/2, s2_vals, width, label="Strategy 2 (Unseen)",
+                   color="#FF9800", edgecolor="white")
+
+            # Value labels
+            for i_bar, v in enumerate(s1_vals):
+                ax.text(i_bar - width/2, v + 1, f"{v:.0f}%", ha="center",
+                        fontsize=7, color="#1565C0")
+            for i_bar, v in enumerate(s2_vals):
+                ax.text(i_bar + width/2, v + 1, f"{v:.0f}%", ha="center",
+                        fontsize=7, color="#E65100")
+
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels, fontsize=9)
+            ax.set_ylabel("Accuracy (%)")
+            ax.set_title(f"Scenario {scn} | frame={fs}", fontsize=11, fontweight="bold")
+            ax.set_ylim(0, 110)
+            chance = 20 if "Environment" in scn else 33.3
+            ax.axhline(y=chance, color="gray", ls="--", lw=0.8,
+                       label=f"chance ({chance:.0f}%)")
+            ax.legend(fontsize=7, loc="upper right")
+
     plt.tight_layout()
     plt.savefig(filename, dpi=150, bbox_inches="tight")
     plt.close()
@@ -565,37 +594,39 @@ def main():
     # Training curves (loss & accuracy per epoch)
     plot_training_curves(history_store, "training_curves.png")
 
-    # Confusion matrix plots
+    # Confusion matrix plots (for BOTH frame sizes)
     plot_configs = [
         (0, 0, "CNN1D",    "I (Environment)"),
         (0, 1, "ResNet1D", "I (Environment)"),
         (1, 0, "CNN1D",    "II (Node)"),
         (1, 1, "ResNet1D", "II (Node)"),
     ]
-    plot_confusion_matrices(cm_store, "1 (Seen)", 500, 0.5,
-                            plot_configs, "confusion_matrices_strategy1.png")
-    plot_confusion_matrices(cm_store, "2 (Unseen)", 500, 0.5,
-                            plot_configs, "confusion_matrices_strategy2.png")
+    for fs in FRAME_SIZES:
+        plot_confusion_matrices(cm_store, "1 (Seen)", fs, 0.5,
+                                plot_configs, f"confusion_matrices_strategy1_f{fs}.png")
+        plot_confusion_matrices(cm_store, "2 (Unseen)", fs, 0.5,
+                                plot_configs, f"confusion_matrices_strategy2_f{fs}.png")
 
-    # Per-class accuracy
-    print("\n  Per-class accuracy (frame=500, overlap=50%):")
-    for strategy in ["1 (Seen)", "2 (Unseen)"]:
-        print(f"\n  {'='*60}")
-        print(f"    STRATEGY {strategy}")
-        print(f"  {'='*60}")
-        for mname in ["CNN1D", "ResNet1D"]:
-            for scn_label in ["I (Environment)", "II (Node)"]:
-                cm, labels, acc = cm_store[
-                    (mname, scn_label, strategy, 500, 0.5)]
-                row_sums = cm.sum(axis=1)
-                per_class = np.where(row_sums > 0,
-                                     cm.diagonal() / row_sums * 100, 0.0)
-                print(f"\n    {mname} | Scenario {scn_label} | "
-                      f"Overall: {acc*100:.1f}%")
-                for lbl, pca, rs in zip(labels, per_class, row_sums):
-                    print(f"      {lbl:>10s}: {pca:5.1f}%  (n={rs})")
+    # Per-class accuracy (for BOTH frame sizes)
+    for fs in FRAME_SIZES:
+        print(f"\n  Per-class accuracy (frame={fs}, overlap=50%):")
+        for strategy in ["1 (Seen)", "2 (Unseen)"]:
+            print(f"\n  {'='*60}")
+            print(f"    STRATEGY {strategy} | frame={fs}")
+            print(f"  {'='*60}")
+            for mname in ["CNN1D", "ResNet1D"]:
+                for scn_label in ["I (Environment)", "II (Node)"]:
+                    cm, labels, acc = cm_store[
+                        (mname, scn_label, strategy, fs, 0.5)]
+                    row_sums = cm.sum(axis=1)
+                    per_class = np.where(row_sums > 0,
+                                         cm.diagonal() / row_sums * 100, 0.0)
+                    print(f"\n    {mname} | Scenario {scn_label} | "
+                          f"Overall: {acc*100:.1f}%")
+                    for lbl, pca, rs in zip(labels, per_class, row_sums):
+                        print(f"      {lbl:>10s}: {pca:5.1f}%  (n={rs})")
 
-    # Results summary table
+        # Results summary table
     results_df = pd.DataFrame(results)
     print("\n" + "=" * 90)
     print("FULL RESULTS SUMMARY")
