@@ -53,6 +53,9 @@ project/
 |   |-- nodeA_forest_main_*.csv
 |   |-- ...
 |   |-- nodeC_river_main_*.csv
+|--- Firmware/    # Scripts and files for setting up the devices ( Rpi and Adafruit Boards)
+|--- Results/     # Contains results from the script
+|--- iot_fingerprinting.ipynb     # same script like the .py file but can be used with jupyter notebook  
 ```
 
 Each CSV has columns: `timestamp, node_id, rssi, lqi` (18,000 rows per file).
